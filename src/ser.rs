@@ -2,6 +2,7 @@ use crate::error::{Error, Result};
 use serde::ser::{self, Serialize};
 use std::fmt::Write;
 
+// TODO: Should I rename this back to simply Serializer?
 pub struct AdifSerializer {
     // This string starts empty and ADIF is appended as values are serialized.
     output: String,
