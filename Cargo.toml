@@ -2,7 +2,13 @@
 name = "serde-adif"
 version = "0.1.0"
 edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "A serde data format for ADIF (Amateur Data Interchange Format), the standard interchange format used by amateur radio logging software."
+repository = "https://github.com/chelmiki/serde-adif"
+readme = "README.md"
+keywords = ["adif", "hamradio", "amateur-radio", "serde", "logbook"]
+categories = ["encoding", "parser-implementations"]
 
 [dependencies]
-serde.workspace = true
+serde = "1.0"
 serde_derive = "1.0.217"

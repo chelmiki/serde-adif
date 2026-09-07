@@ -23,25 +23,19 @@ pub enum Error {
     // Deserialize impl for a struct may return an error because a required
     // field is missing.
     Message(String),
-
-    // Zero or more variants that can be created directly by the Serializer and
-    // Deserializer without going through `ser::Error` and `de::Error`. These
-    // are specific to the format, in this case JSON.
     Eof,
-    Syntax,
-    ExpectedBoolean,
-    ExpectedInteger,
-    ExpectedString,
-    ExpectedNull,
-    ExpectedArray,
-    ExpectedArrayComma,
-    ExpectedArrayEnd,
-    ExpectedMap,
-    ExpectedMapColon,
-    ExpectedMapComma,
-    ExpectedMapEnd,
-    ExpectedEnum,
-    TrailingCharacters,
+    /// A tag was opened with "<" but no matching ">" was found. Carries a
+    /// short snippet of what follows the "<", truncated since the rest of
+    /// the input could be arbitrarily large.
+    ExpectedClosingTag(String),
+    /// A `<FIELD:LENGTH:TYPE>` tag is missing one of its colon-separated
+    /// parts (e.g. no length section at all). Carries the raw tag content
+    /// that failed to split correctly.
+    MalformedTag(String),
+    /// A tag's length section is present but isn't a valid unsigned
+    /// integer. Carries the raw text that failed to parse.
+    InvalidLength(String),
+    Unsupported(&'static str),
 }
 
 impl ser::Error for Error {
@@ -61,8 +55,14 @@ impl Display for Error {
         match self {
             Error::Message(msg) => write!(f, "{}", msg),
             Error::Eof => f.write_str("unexpected end of input"),
-            /* and so forth */
-            _ => unimplemented!(),
+            Error::ExpectedClosingTag(snippet) => {
+                write!(f, "missing closing tag \">\" after \"{}\"", snippet)
+            }
+            Error::MalformedTag(tag) => {
+                write!(f, "the tag \"{}\" is missing its key or value length", tag)
+            }
+            Error::InvalidLength(len) => write!(f, "\"{}\" is not a valid value length", len),
+            Error::Unsupported(unsupported) => write!(f, "Unsupported type {}", unsupported),
         }
     }
 }
