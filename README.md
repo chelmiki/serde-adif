@@ -62,17 +62,23 @@ std::fs::write("log.adi", adif_text).unwrap();
 type reused recursively at every depth:
 
 ```
-AdifDeserializer   (Deserializer) - whole file
- └─ RecordSeq         (SeqAccess) - iterates every record
-     └─ RecordDeserializer (Deserializer) - one record, not yet parsed
-         └─ RecordFields   (MapAccess)    - iterates that record's fields
-             └─ ValueDeserializer (Deserializer) - one field's raw value
-                 └─ CommaSeparated (SeqAccess)    - items of one list-valued field
+AdifDeserializer   (Deserializer) - whole file: an optional header, then a sequence of records
+ ├─ RecordDeserializer    (Deserializer) - the header, via deserialize_header()
+ │   └─ RecordFields          (MapAccess)  - iterates header fields, stops at <EOH>
+ └─ RecordSeq             (SeqAccess) - iterates every record
+     └─ RecordDeserializer    (Deserializer) - one record, via deserialize_record()
+         └─ RecordFields          (MapAccess)  - iterates record fields, stops at <EOR>
+             └─ ValueDeserializer     (Deserializer) - one field's raw value
+                 └─ CommaSeparated        (SeqAccess)  - items of one list-valued field
 ```
 
 This mirrors ADIF's own grammar, which has exactly these three fixed levels
 (file -> records -> fields) and no way to nest a record inside a field's
-value.
+value. A header and a record are structurally identical at the field level,
+a sequence of `<FIELD:LENGTH:TYPE>` tags terminated by a closing tag, so
+`RecordDeserializer`/`RecordFields` are shared between both instead of
+duplicated, differing only in which closing tag ends them (`<EOH>` vs
+`<EOR>`).
 
 `ser.rs` follows the same reasoning but needs fewer types, since a
 `Serializer` can implement its matching `Serialize*` trait (`SerializeSeq`,
@@ -80,10 +86,17 @@ value.
 iterator type the way `SeqAccess`/`MapAccess` do on the deserialize side:
 
 ```
-AdifSerializer      (Serializer + SerializeSeq) - whole file, iterates records
- └─ RecordSerializer (Serializer + SerializeStruct) - one record, iterates fields
+AdifSerializer      (Serializer + SerializeSeq) - whole file, writes an optional header, then iterates records
+ ├─ RecordSerializer (Serializer + SerializeStruct) - the header, via RecordSerializer::new_header()
+ └─ RecordSerializer (Serializer + SerializeStruct) - one record, via RecordSerializer::new_record()
      └─ ValueSerializer (Serializer + SerializeSeq/SerializeTuple/SerializeTupleStruct) - one field's value, iterates list items
 ```
+
+Same applies here, one `RecordSerializer` type serves both roles,
+distinguished only by the terminator.
+
+The public entry points, `from_str`/`to_string`, operate on `Adif<H, R>`, a
+struct pairing an optional header (`H`) with a sequence of records (`R`).
 
 ## References
 
