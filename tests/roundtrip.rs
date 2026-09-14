@@ -1,4 +1,8 @@
+use serde_adif::Adif;
 use serde_derive::{Deserialize, Serialize};
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+struct NoHeader {}
 
 #[test]
 fn test_roundtrip_simple_types() {
@@ -26,10 +30,13 @@ fn test_roundtrip_simple_types() {
         class: 'A',
         mode: "FT8",
     };
-    let records = vec![record];
+    let adif = Adif {
+        header: None,
+        records: vec![record],
+    };
     assert_eq!(
-        serde_adif::from_str::<Vec<Record>>(&serde_adif::to_string(&records).unwrap()).unwrap(),
-        records
+        serde_adif::from_str::<NoHeader, Record>(&serde_adif::to_string(&adif).unwrap()).unwrap(),
+        adif
     );
 }
 
@@ -46,10 +53,14 @@ fn test_roundtrip_option() {
         dbm: Some(-10),
     };
 
-    let records = vec![missing_field];
+    let adif = Adif {
+        header: None,
+        records: vec![missing_field],
+    };
+
     assert_eq!(
-        serde_adif::from_str::<Vec<Record>>(&serde_adif::to_string(&records).unwrap()).unwrap(),
-        records
+        serde_adif::from_str::<NoHeader, Record>(&serde_adif::to_string(&adif).unwrap()).unwrap(),
+        adif
     );
 
     let empty_record = Record {
@@ -57,10 +68,14 @@ fn test_roundtrip_option() {
         dbm: None,
     };
 
-    let records = vec![empty_record];
+    let adif = Adif {
+        header: None,
+        records: vec![empty_record],
+    };
+
     assert_eq!(
-        serde_adif::from_str::<Vec<Record>>(&serde_adif::to_string(&records).unwrap()).unwrap(),
-        records
+        serde_adif::from_str::<NoHeader, Record>(&serde_adif::to_string(&adif).unwrap()).unwrap(),
+        adif
     );
 }
 
@@ -91,10 +106,14 @@ fn test_roundtrip_field_value_sequences() {
         spot: Spot("EI4JKB".to_string(), 144.0),
     };
 
-    let records = vec![record_1];
+    let adif = Adif {
+        header: None,
+        records: vec![record_1],
+    };
+
     assert_eq!(
-        serde_adif::from_str::<Vec<Record>>(&serde_adif::to_string(&records).unwrap()).unwrap(),
-        records
+        serde_adif::from_str::<NoHeader, Record>(&serde_adif::to_string(&adif).unwrap()).unwrap(),
+        adif
     );
 
     // Only Vec<T> can be empty - an array's size is fixed by its type, and a
@@ -107,10 +126,14 @@ fn test_roundtrip_field_value_sequences() {
         spot: Spot("EI4JKB".to_string(), 144.0),
     };
 
-    let records = vec![record_2];
+    let adif = Adif {
+        header: None,
+        records: vec![record_2],
+    };
+
     assert_eq!(
-        serde_adif::from_str::<Vec<Record>>(&serde_adif::to_string(&records).unwrap()).unwrap(),
-        records
+        serde_adif::from_str::<NoHeader, Record>(&serde_adif::to_string(&adif).unwrap()).unwrap(),
+        adif
     );
 }
 
@@ -130,29 +153,14 @@ fn test_roundtrip_newtype() {
         gridsquare: Gridsquare("IO63qh".to_string()),
     };
 
-    let records = vec![record];
+    let adif = Adif {
+        header: None,
+        records: vec![record],
+    };
+
     assert_eq!(
-        serde_adif::from_str::<Vec<Record>>(&serde_adif::to_string(&records).unwrap()).unwrap(),
-        records
-    );
-}
-
-#[test]
-fn test_roundtrip_top_level_newtype() {
-    // A newtype struct wrapping the top-level Vec<Record> is a transparent
-    // wrapper in both directions.
-    #[derive(Deserialize, Serialize, Debug, PartialEq)]
-    struct Record {
-        index: u32,
-    }
-
-    #[derive(Deserialize, Serialize, Debug, PartialEq)]
-    struct Log(Vec<Record>);
-
-    let log = Log(vec![Record { index: 1 }, Record { index: 2 }]);
-    assert_eq!(
-        serde_adif::from_str::<Log>(&serde_adif::to_string(&log).unwrap()).unwrap(),
-        log
+        serde_adif::from_str::<NoHeader, Record>(&serde_adif::to_string(&adif).unwrap()).unwrap(),
+        adif
     );
 }
 
@@ -179,10 +187,14 @@ fn test_roundtrip_top_level_sequences() {
         callsign: "BBB".to_string(),
     };
 
-    let records = vec![record_1, record_2, record_3];
+    let adif = Adif {
+        header: None,
+        records: vec![record_1, record_2, record_3],
+    };
+
     assert_eq!(
-        serde_adif::from_str::<Vec<Record>>(&serde_adif::to_string(&records).unwrap()).unwrap(),
-        records
+        serde_adif::from_str::<NoHeader, Record>(&serde_adif::to_string(&adif).unwrap()).unwrap(),
+        adif
     );
 }
 
@@ -204,9 +216,43 @@ fn test_roundtrip_enum() {
         mode: Mode::Ssb,
     };
 
-    let records = vec![record];
+    let adif = Adif {
+        header: None,
+        records: vec![record],
+    };
+
     assert_eq!(
-        serde_adif::from_str::<Vec<Record>>(&serde_adif::to_string(&records).unwrap()).unwrap(),
-        records
+        serde_adif::from_str::<NoHeader, Record>(&serde_adif::to_string(&adif).unwrap()).unwrap(),
+        adif
+    );
+}
+
+#[test]
+fn test_roundtrip_with_header() {
+    #[derive(Deserialize, Serialize, Debug, PartialEq)]
+    struct Header {
+        adif_ver: String,
+        programid: String,
+    }
+
+    #[derive(Deserialize, Serialize, Debug, PartialEq)]
+    struct Record {
+        index: u32,
+        callsign: String,
+    }
+
+    let adif = Adif {
+        header: Some(Header {
+            adif_ver: "3.1.4".to_string(),
+            programid: "eirlog".to_string(),
+        }),
+        records: vec![Record {
+            index: 1,
+            callsign: "EI4JKB".to_string(),
+        }],
+    };
+    assert_eq!(
+        serde_adif::from_str(&serde_adif::to_string(&adif).unwrap()).unwrap(),
+        adif
     );
 }

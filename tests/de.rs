@@ -1,3 +1,4 @@
+use serde_adif::Adif;
 use serde_derive::Deserialize;
 
 #[test]
@@ -29,7 +30,12 @@ fn test_deserialize_simple_types() {
     let expected = vec![expected_record];
     let test =
         "<index:1>1<callsign:6>EI4JKB<freq:6>14.074<dbm:3>-10<bw:1>5<synced:1>Y<qsl_recv:1>N<class:1>A<mode:3>FT8<EOR>\n";
-    assert_eq!(serde_adif::from_str::<Vec<Record>>(test).unwrap(), expected);
+    assert_eq!(
+        serde_adif::from_str::<serde::de::IgnoredAny, Record>(test)
+            .unwrap()
+            .records,
+        expected
+    );
 }
 
 #[test]
@@ -46,8 +52,14 @@ fn test_deserialize_option() {
     };
 
     let expected = vec![missing_field];
+
     let test = "<dbm:3>-10<EOR>\n";
-    assert_eq!(serde_adif::from_str::<Vec<Record>>(test).unwrap(), expected);
+    assert_eq!(
+        serde_adif::from_str::<serde::de::IgnoredAny, Record>(test)
+            .unwrap()
+            .records,
+        expected
+    );
 
     let empty_record = Record {
         freq: None,
@@ -56,7 +68,12 @@ fn test_deserialize_option() {
 
     let expected = vec![empty_record];
     let test = "<EOR>\n";
-    assert_eq!(serde_adif::from_str::<Vec<Record>>(test).unwrap(), expected);
+    assert_eq!(
+        serde_adif::from_str::<serde::de::IgnoredAny, Record>(test)
+            .unwrap()
+            .records,
+        expected
+    );
 }
 
 #[test]
@@ -88,7 +105,12 @@ fn test_deserialize_field_value_sequences() {
 
     let expected = vec![expected_record_1];
     let test = "<index:1>1<awards:5>1,2,3<rst:5>5,9,9<exchange:4>A,DX<spot:10>EI4JKB,144<EOR>\n";
-    assert_eq!(serde_adif::from_str::<Vec<Record>>(test).unwrap(), expected);
+    assert_eq!(
+        serde_adif::from_str::<serde::de::IgnoredAny, Record>(test)
+            .unwrap()
+            .records,
+        expected
+    );
 
     // Only Vec<T> can be empty - an array's size is fixed by its type, and a
     // tuple/tuple struct's too, so neither has an "empty" instance to test here.
@@ -102,7 +124,12 @@ fn test_deserialize_field_value_sequences() {
 
     let expected = vec![expected_record_2];
     let test = "<index:1>1<awards:0><rst:5>5,9,9<exchange:4>A,DX<spot:10>EI4JKB,144<EOR>\n";
-    assert_eq!(serde_adif::from_str::<Vec<Record>>(test).unwrap(), expected);
+    assert_eq!(
+        serde_adif::from_str::<serde::de::IgnoredAny, Record>(test)
+            .unwrap()
+            .records,
+        expected
+    );
 }
 
 #[test]
@@ -123,24 +150,12 @@ fn test_deserialize_newtype() {
 
     let expected = vec![expected_record];
     let test = "<index:1>1<gridsquare:6>IO63qh<EOR>\n";
-    assert_eq!(serde_adif::from_str::<Vec<Record>>(test).unwrap(), expected);
-}
-
-#[test]
-fn test_deserialize_top_level_newtype() {
-    // A newtype struct wrapping the top-level Vec<Record> is a transparent
-    // wrapper - it deserializes identically to a plain Vec<Record>.
-    #[derive(Deserialize, Debug, PartialEq)]
-    struct Record {
-        index: u32,
-    }
-
-    #[derive(Deserialize, Debug, PartialEq)]
-    struct Log(Vec<Record>);
-
-    let test = "<index:1>1<EOR>\n<index:1>2<EOR>\n";
-    let expected = Log(vec![Record { index: 1 }, Record { index: 2 }]);
-    assert_eq!(serde_adif::from_str::<Log>(test).unwrap(), expected);
+    assert_eq!(
+        serde_adif::from_str::<serde::de::IgnoredAny, Record>(test)
+            .unwrap()
+            .records,
+        expected
+    );
 }
 
 #[test]
@@ -168,7 +183,12 @@ fn test_deserialize_top_level_sequences() {
 
     let expected = vec![expected_record_1, expected_record_2, expected_record_3];
     let test = "<index:1>1<callsign:6>EI4JKB<EOR>\n<index:1>2<callsign:4>AAAA<EOR>\n<index:1>3<callsign:3>BBB<EOR>\n";
-    assert_eq!(serde_adif::from_str::<Vec<Record>>(test).unwrap(), expected);
+    assert_eq!(
+        serde_adif::from_str::<serde::de::IgnoredAny, Record>(test)
+            .unwrap()
+            .records,
+        expected
+    );
 }
 
 #[test]
@@ -191,7 +211,12 @@ fn test_deserialize_enum() {
 
     let expected = vec![expected_record];
     let test = "<index:1>1<mode:3>Ssb<EOR>\n";
-    assert_eq!(serde_adif::from_str::<Vec<Record>>(test).unwrap(), expected);
+    assert_eq!(
+        serde_adif::from_str::<serde::de::IgnoredAny, Record>(test)
+            .unwrap()
+            .records,
+        expected
+    );
 }
 
 #[test]
@@ -208,7 +233,12 @@ fn test_deserialize_sequence_whitespace() {
         awards: vec![1, 2, 3],
     }];
     let test = "<awards:7>1, 2, 3<EOR>\n";
-    assert_eq!(serde_adif::from_str::<Vec<Record>>(test).unwrap(), expected);
+    assert_eq!(
+        serde_adif::from_str::<serde::de::IgnoredAny, Record>(test)
+            .unwrap()
+            .records,
+        expected
+    );
 }
 
 #[test]
@@ -222,7 +252,12 @@ fn test_deserialize_record_whitespace() {
 
     let expected = vec![Record { index: 1 }, Record { index: 2 }];
     let test = "<index:1>1<EOR>\n\n\n<index:1>2<EOR>\n";
-    assert_eq!(serde_adif::from_str::<Vec<Record>>(test).unwrap(), expected);
+    assert_eq!(
+        serde_adif::from_str::<serde::de::IgnoredAny, Record>(test)
+            .unwrap()
+            .records,
+        expected
+    );
 }
 
 #[test]
@@ -237,7 +272,12 @@ fn test_deserialize_ignore_extra_fields() {
 
     let expected = vec![Record { index: 1 }];
     let test = "<ignore:3>abc<index:1>1<EOR>\n";
-    assert_eq!(serde_adif::from_str::<Vec<Record>>(test).unwrap(), expected);
+    assert_eq!(
+        serde_adif::from_str::<serde::de::IgnoredAny, Record>(test)
+            .unwrap()
+            .records,
+        expected
+    );
 }
 
 #[test]
@@ -248,7 +288,7 @@ fn test_deserialize_malformed_tag() {
     }
 
     let test = "<index>1<EOR>\n";
-    let result = serde_adif::from_str::<Vec<Record>>(test);
+    let result = serde_adif::from_str::<serde::de::IgnoredAny, Record>(test);
     assert!(matches!(result, Err(serde_adif::Error::MalformedTag(_))))
 }
 
@@ -260,7 +300,7 @@ fn test_deserialize_invalid_length() {
     }
 
     let test = "<index:one>1<EOR>\n";
-    let result = serde_adif::from_str::<Vec<Record>>(test);
+    let result = serde_adif::from_str::<serde::de::IgnoredAny, Record>(test);
     assert!(matches!(result, Err(serde_adif::Error::InvalidLength(_))));
 }
 
@@ -272,7 +312,7 @@ fn test_deserialize_invalid_number() {
     }
 
     let test = "<freq:3>one<EOR>\n";
-    let error = serde_adif::from_str::<Vec<Record>>(test).unwrap_err();
+    let error = serde_adif::from_str::<serde::de::IgnoredAny, Record>(test).unwrap_err();
     assert!(error.to_string().contains("cannot parse \"one\" as f64"));
 }
 
@@ -284,7 +324,7 @@ fn test_deserialize_invalid_bool() {
     }
 
     let test = "<qsl_recv:1>X<EOR>\n";
-    let error = serde_adif::from_str::<Vec<Record>>(test).unwrap_err();
+    let error = serde_adif::from_str::<serde::de::IgnoredAny, Record>(test).unwrap_err();
     assert_eq!(
         error.to_string(),
         "expected \"Y\" or \"N\" (case-insensitive) for a boolean, found \"X\""
@@ -299,7 +339,7 @@ fn test_deserialize_invalid_char() {
     }
 
     let test = "<class:2>AA<EOR>\n";
-    let error = serde_adif::from_str::<Vec<Record>>(test).unwrap_err();
+    let error = serde_adif::from_str::<serde::de::IgnoredAny, Record>(test).unwrap_err();
     assert_eq!(
         error.to_string(),
         "expected a single character, found \"AA\""
@@ -314,11 +354,37 @@ fn test_deserialize_missing_closing_tag() {
     }
 
     let test = "<index:11\n";
-    let result = serde_adif::from_str::<Vec<Record>>(test);
+    let result = serde_adif::from_str::<serde::de::IgnoredAny, Record>(test);
     assert!(matches!(
         result,
         Err(serde_adif::Error::ExpectedClosingTag(_))
     ));
+}
+
+#[test]
+fn test_deserialize_missing_terminator() {
+    #[derive(Deserialize, Debug, PartialEq)]
+    struct Header {
+        adif_ver: String,
+    }
+    #[derive(Deserialize, Debug, PartialEq)]
+    struct Record {
+        index: u32,
+    }
+
+    let test_missing_eor = "<index:1>1\n";
+    let result = serde_adif::from_str::<serde::de::IgnoredAny, Record>(test_missing_eor);
+    match result {
+        Err(serde_adif::Error::MissingTerminator(tag)) => assert_eq!(tag, "<EOR>"),
+        other => panic!("expected MissingTerminator(\"<EOR>\"), got {other:?}"),
+    }
+
+    let test_missing_eoh = "# Header\n<adif_ver:3>1.1<index:1>1\n";
+    let result = serde_adif::from_str::<Header, Record>(test_missing_eoh);
+    match result {
+        Err(serde_adif::Error::MissingTerminator(tag)) => assert_eq!(tag, "<EOH>"),
+        other => panic!("expected MissingTerminator(\"<EOH>\"), got {other:?}"),
+    }
 }
 
 #[test]
@@ -330,6 +396,56 @@ fn test_deserialize_missing_non_optional_fields() {
     }
 
     let test = "<index:1>1<EOR>\n";
-    let error = serde_adif::from_str::<Vec<Record>>(test).unwrap_err();
+    let error = serde_adif::from_str::<serde::de::IgnoredAny, Record>(test).unwrap_err();
     assert!(error.to_string().contains("missing field `callsign`"));
+}
+
+#[test]
+fn test_deserialize_with_header() {
+    #[derive(Deserialize, Debug, PartialEq)]
+    struct Header {
+        adif_ver: String,
+        programid: String,
+    }
+
+    #[derive(Deserialize, Debug, PartialEq)]
+    struct Record {
+        index: u32,
+        callsign: String,
+    }
+
+    let expected = Adif {
+        header: Some(Header {
+            adif_ver: "3.1.4".to_string(),
+            programid: "eirlog".to_string(),
+        }),
+        records: vec![Record {
+            index: 1,
+            callsign: "EI4JKB".to_string(),
+        }],
+    };
+    let test = "# ADIF Header\n<adif_ver:5>3.1.4<programid:6>eirlog<EOH>\n<index:1>1<callsign:6>EI4JKB<EOR>\n";
+    assert_eq!(serde_adif::from_str(test).unwrap(), expected);
+}
+
+#[test]
+fn test_deserialize_ignore_header() {
+    #[derive(Deserialize, Debug, PartialEq)]
+    struct Record {
+        index: u32,
+        callsign: String,
+    }
+
+    let expected = vec![Record {
+        index: 1,
+        callsign: "EI4JKB".to_string(),
+    }];
+
+    let test = "# ADIF Header\n<adif_ver:5>3.1.4<programid:6>eirlog<EOH>\n<index:1>1<callsign:6>EI4JKB<EOR>\n";
+    assert_eq!(
+        serde_adif::from_str::<serde::de::IgnoredAny, Record>(test)
+            .unwrap()
+            .records,
+        expected
+    );
 }

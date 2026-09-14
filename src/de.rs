@@ -1,6 +1,7 @@
 //! Deserialize ADIF data to a Rust data structure.
 
 use crate::error::{Error, Result};
+use crate::{Adif, EOH, EOR};
 use serde::de::{
     self, Deserialize, DeserializeSeed, Deserializer, IntoDeserializer, MapAccess, SeqAccess,
     Visitor,
@@ -22,47 +23,48 @@ macro_rules! unsupported_deserialize {
 }
 
 #[derive(Debug)]
-pub struct AdifDeserializer<'de> {
+struct AdifDeserializer<'de> {
     input: &'de str,
 }
 
-/// Deserializes an ADIF document into `T`.
+/// Deserializes an ADIF document into `Adif<H, R>`.
 ///
-/// The top level of an ADIF document is always a sequence of records, so `T`
-/// must be a sequence type (e.g. `Vec<Qso>`), not a single record struct -
-/// deserializing directly into a bare struct returns an
-/// [`Unsupported`](crate::Error::Unsupported) error.
-pub fn from_str<'a, T>(s: &'a str) -> Result<T>
+/// The top level of an ADIF document always has the same shape: an
+/// optional header followed by a sequence of records. `H` and `R` are
+/// typically structs representing the header and each record
+/// respectively. If the header should be ignored, [`serde::de::IgnoredAny`]
+/// works for `H` regardless of whether the document actually has one,
+/// since it accepts and discards whatever it's given. `()` also works,
+/// but only if the document is guaranteed to never have a header; it
+/// fails otherwise, since it can't be deserialized from one.
+pub fn from_str<'a, H, R>(s: &'a str) -> Result<Adif<H, R>>
 where
-    T: Deserialize<'a>,
+    H: Deserialize<'a>,
+    R: Deserialize<'a>,
 {
+    // Trim leading whitespace
+    let s = s.trim_start();
     let mut de = AdifDeserializer { input: s };
-    T::deserialize(&mut de)
+
+    let header = if s.starts_with('<') {
+        None
+    } else {
+        let h = H::deserialize(de.deserialize_header())?;
+        Some(h)
+    };
+
+    let records = Vec::<R>::deserialize(&mut de)?;
+    Ok(Adif { header, records })
 }
 
 impl<'de> AdifDeserializer<'de> {
     fn parse_next(&mut self) -> Result<Option<(&'de str, &'de str)>> {
-        // Trim leading whitespace
-        self.input = self.input.trim_start();
-
         if self.input.is_empty() {
             return Ok(None);
         }
 
-        // Skip header if first character is not '<'
-        if !self.input.starts_with('<') {
-            // Find <EOH> case-insensitively
-            let eoh_pos = self
-                .input
-                .as_bytes()
-                .windows(5) // "<EOH>" length
-                .position(|w| w.eq_ignore_ascii_case(b"<eoh>"))
-                .ok_or(Error::Eof)?;
-            // Advance past <EOH>
-            self.input = &self.input[eoh_pos + 5..];
-            self.input = self.input.trim_start();
-        }
-
+        // Find the first tag <. This could either be the start of
+        // a header field or a record field.
         let Some(start) = self.input.find('<') else {
             return Ok(None);
         };
@@ -105,19 +107,18 @@ impl<'de> AdifDeserializer<'de> {
         Ok(Some((key, value)))
     }
 
-    fn consume_eor(&mut self) -> bool {
-        let trimmed = self.input.trim_start();
-        if trimmed.to_uppercase().starts_with("<EOR>") {
-            // advance past <EOR>
-            self.input = &trimmed[5..];
-            true
-        } else {
-            false
+    fn deserialize_record<'a>(&'a mut self) -> RecordDeserializer<'a, 'de> {
+        RecordDeserializer {
+            de: self,
+            terminator: EOR,
         }
     }
 
-    fn deserialize_record<'a>(&'a mut self) -> RecordDeserializer<'a, 'de> {
-        RecordDeserializer { de: self }
+    fn deserialize_header<'a>(&'a mut self) -> RecordDeserializer<'a, 'de> {
+        RecordDeserializer {
+            de: self,
+            terminator: EOH,
+        }
     }
 }
 
@@ -137,16 +138,6 @@ impl<'de> Deserializer<'de> for &mut AdifDeserializer<'de> {
         V: Visitor<'de>,
     {
         visitor.visit_seq(RecordSeq { de: self })
-    }
-
-    fn deserialize_map<V>(self, visitor: V) -> Result<V::Value>
-    where
-        V: Visitor<'de>,
-    {
-        visitor.visit_map(RecordFields {
-            de: self,
-            current: None,
-        })
     }
 
     fn deserialize_option<V>(self, visitor: V) -> Result<V::Value>
@@ -177,6 +168,7 @@ impl<'de> Deserializer<'de> for &mut AdifDeserializer<'de> {
         deserialize_f64() => "f64",
         deserialize_char() => "char",
         deserialize_str() => "str",
+        deserialize_map() => "map",
         deserialize_string() => "string",
         deserialize_unit() => "unit",
         deserialize_bytes() => "bytes",
@@ -210,17 +202,15 @@ impl<'de, 'a> SeqAccess<'de> for RecordSeq<'a, 'de> {
         }
 
         let val = seed.deserialize(self.de.deserialize_record())?;
-
-        // consume `<EOR>` if present
-        self.de.consume_eor();
         Ok(Some(val))
     }
 }
 
-/// MapAccess implementation for ADIF record
+/// MapAccess implementation for ADIF record and header
 struct RecordFields<'a, 'de> {
     de: &'a mut AdifDeserializer<'de>,
     current: Option<(String, &'de str)>,
+    terminator: &'a str, // <EOH> or <EOR>
 }
 
 impl<'de, 'a> MapAccess<'de> for RecordFields<'a, 'de> {
@@ -230,13 +220,9 @@ impl<'de, 'a> MapAccess<'de> for RecordFields<'a, 'de> {
     where
         K: DeserializeSeed<'de>,
     {
-        if self
-            .de
-            .input
-            .trim_start()
-            .to_uppercase()
-            .starts_with("<EOR>")
-        {
+        let trimmed = self.de.input.trim_start();
+        if trimmed.to_uppercase().starts_with(self.terminator) {
+            self.de.input = &trimmed[self.terminator.len()..];
             return Ok(None);
         }
         if let Some((k, v)) = self.de.parse_next()? {
@@ -244,7 +230,7 @@ impl<'de, 'a> MapAccess<'de> for RecordFields<'a, 'de> {
             self.current = Some((key.clone(), v));
             seed.deserialize(key.into_deserializer()).map(Some)
         } else {
-            Ok(None)
+            Err(Error::MissingTerminator(self.terminator.to_string()))
         }
     }
 
@@ -262,6 +248,7 @@ impl<'de, 'a> MapAccess<'de> for RecordFields<'a, 'de> {
 
 struct RecordDeserializer<'a, 'de> {
     de: &'a mut AdifDeserializer<'de>,
+    terminator: &'a str,
 }
 
 impl<'de, 'a> Deserializer<'de> for RecordDeserializer<'a, 'de> {
@@ -274,6 +261,7 @@ impl<'de, 'a> Deserializer<'de> for RecordDeserializer<'a, 'de> {
         visitor.visit_map(RecordFields {
             de: self.de,
             current: None,
+            terminator: self.terminator,
         })
     }
 

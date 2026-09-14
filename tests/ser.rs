@@ -1,4 +1,8 @@
+use serde_adif::Adif;
 use serde_derive::Serialize;
+
+#[derive(Debug, PartialEq, Serialize)]
+struct NoHeader {}
 
 #[test]
 fn test_serialize_simple_types() {
@@ -26,10 +30,15 @@ fn test_serialize_simple_types() {
         class: 'A',
         mode: "FT8",
     };
-    let records = vec![test];
+
+    let adif: Adif<NoHeader, Record> = Adif {
+        header: None,
+        records: vec![test],
+    };
+
     let expected =
         "<index:1>1<callsign:6>EI4JKB<freq:6>14.074<dbm:3>-10<bw:1>5<synced:1>Y<qsl_recv:1>N<class:1>A<mode:3>FT8<EOR>\n";
-    assert_eq!(serde_adif::to_string(&records).unwrap(), expected);
+    assert_eq!(serde_adif::to_string(&adif).unwrap(), expected);
 }
 
 #[test]
@@ -45,18 +54,26 @@ fn test_serialize_option() {
         dbm: Some(-10),
     };
 
-    let records = vec![missing_field];
+    let adif: Adif<NoHeader, Record> = Adif {
+        header: None,
+        records: vec![missing_field],
+    };
+
     let expected = "<dbm:3>-10<EOR>\n";
-    assert_eq!(serde_adif::to_string(&records).unwrap(), expected);
+    assert_eq!(serde_adif::to_string(&adif).unwrap(), expected);
 
     let empty_record = Record {
         freq: None,
         dbm: None,
     };
 
-    let records = vec![empty_record];
+    let adif: Adif<NoHeader, Record> = Adif {
+        header: None,
+        records: vec![empty_record],
+    };
+
     let expected = "<EOR>\n";
-    assert_eq!(serde_adif::to_string(&records).unwrap(), expected);
+    assert_eq!(serde_adif::to_string(&adif).unwrap(), expected);
 }
 
 #[test]
@@ -86,10 +103,14 @@ fn test_serialize_field_value_sequences() {
         spot: Spot("EI4JKB".to_string(), 144.0),
     };
 
-    let records = vec![test1];
+    let adif: Adif<NoHeader, Record> = Adif {
+        header: None,
+        records: vec![test1],
+    };
+
     let expected =
         "<index:1>1<awards:5>1,2,3<rst:5>5,9,9<exchange:4>A,DX<spot:10>EI4JKB,144<EOR>\n";
-    assert_eq!(serde_adif::to_string(&records).unwrap(), expected);
+    assert_eq!(serde_adif::to_string(&adif).unwrap(), expected);
 
     // Only Vec<T> can be empty - an array's size is fixed by its type, and a
     // tuple/tuple struct's too, so neither has an "empty" instance to test here.
@@ -101,9 +122,13 @@ fn test_serialize_field_value_sequences() {
         spot: Spot("EI4JKB".to_string(), 144.0),
     };
 
-    let records = vec![test2];
+    let adif: Adif<NoHeader, Record> = Adif {
+        header: None,
+        records: vec![test2],
+    };
+
     let expected = "<index:1>1<awards:0><rst:5>5,9,9<exchange:4>A,DX<spot:10>EI4JKB,144<EOR>\n";
-    assert_eq!(serde_adif::to_string(&records).unwrap(), expected);
+    assert_eq!(serde_adif::to_string(&adif).unwrap(), expected);
 }
 
 #[test]
@@ -122,26 +147,13 @@ fn test_serialize_newtype() {
         gridsquare: Gridsquare("IO63qh".to_string()),
     };
 
-    let records = vec![test];
+    let adif: Adif<NoHeader, Record> = Adif {
+        header: None,
+        records: vec![test],
+    };
+
     let expected = "<index:1>1<gridsquare:6>IO63qh<EOR>\n";
-    assert_eq!(serde_adif::to_string(&records).unwrap(), expected);
-}
-
-#[test]
-fn test_serialize_top_level_newtype() {
-    // A newtype struct wrapping the top-level Vec<Record> is a transparent
-    // wrapper - it serializes identically to the Vec<Record> it contains.
-    #[derive(Serialize)]
-    struct Record {
-        index: u32,
-    }
-
-    #[derive(Serialize)]
-    struct Log(Vec<Record>);
-
-    let log = Log(vec![Record { index: 1 }, Record { index: 2 }]);
-    let expected = "<index:1>1<EOR>\n<index:1>2<EOR>\n";
-    assert_eq!(serde_adif::to_string(&log).unwrap(), expected);
+    assert_eq!(serde_adif::to_string(&adif).unwrap(), expected);
 }
 
 #[test]
@@ -167,9 +179,13 @@ fn test_serialize_top_level_sequences() {
         callsign: "BBB".to_string(),
     };
 
-    let records = vec![test1, test2, test3];
+    let adif: Adif<NoHeader, Record> = Adif {
+        header: None,
+        records: vec![test1, test2, test3],
+    };
+
     let expected = "<index:1>1<callsign:6>EI4JKB<EOR>\n<index:1>2<callsign:4>AAAA<EOR>\n<index:1>3<callsign:3>BBB<EOR>\n";
-    assert_eq!(serde_adif::to_string(&records).unwrap(), expected);
+    assert_eq!(serde_adif::to_string(&adif).unwrap(), expected);
 }
 
 #[test]
@@ -190,9 +206,13 @@ fn test_serialize_enum() {
         mode: Mode::Ssb,
     };
 
-    let records = vec![test];
+    let adif: Adif<NoHeader, Record> = Adif {
+        header: None,
+        records: vec![test],
+    };
+
     let expected = "<index:1>1<mode:3>Ssb<EOR>\n";
-    assert_eq!(serde_adif::to_string(&records).unwrap(), expected);
+    assert_eq!(serde_adif::to_string(&adif).unwrap(), expected);
 }
 
 #[test]
@@ -218,32 +238,52 @@ fn test_serialize_invalid_field_type() {
         },
     };
 
-    let records = vec![test];
-    let error = serde_adif::to_string(&records).unwrap_err();
-    assert_eq!(error.to_string(), "Unsupported type struct");
-}
+    let adif: Adif<NoHeader, Record> = Adif {
+        header: None,
+        records: vec![test],
+    };
 
-#[test]
-fn test_serialize_invalid_top_level_type() {
-    // ADIF is a sequence of Records, so at the top level
-    // a sequence is the only valid type.
-
-    #[derive(Serialize)]
-    struct Record {
-        index: u32,
-    }
-
-    let record = Record { index: 1 };
-
-    let error = serde_adif::to_string(&record).unwrap_err();
+    let error = serde_adif::to_string(&adif).unwrap_err();
     assert_eq!(error.to_string(), "Unsupported type struct");
 }
 
 #[test]
 fn test_serialize_invalid_record_type() {
-    // ADIF is a sequence of Records, each record is a struct/map.
+    // ADIF records is a sequence of Records, each record is a struct/map.
     // The only valid type within the sequence is a struct.
 
-    let error = serde_adif::to_string(&vec![1, 2]).unwrap_err();
+    let adif: Adif<NoHeader, i32> = Adif {
+        header: None,
+        records: vec![1, 2, 3],
+    };
+    let error = serde_adif::to_string(&adif).unwrap_err();
     assert_eq!(error.to_string(), "Unsupported type i32");
+}
+
+#[test]
+fn test_serialize_with_header() {
+    #[derive(Serialize)]
+    struct Header {
+        adif_ver: String,
+        programid: String,
+    }
+
+    #[derive(Serialize)]
+    struct Record {
+        index: u32,
+        callsign: String,
+    }
+
+    let adif = Adif {
+        header: Some(Header {
+            adif_ver: "3.1.4".to_string(),
+            programid: "eirlog".to_string(),
+        }),
+        records: vec![Record {
+            index: 1,
+            callsign: "EI4JKB".to_string(),
+        }],
+    };
+    let expected = "# ADIF Header\n<adif_ver:5>3.1.4<programid:6>eirlog<EOH>\n<index:1>1<callsign:6>EI4JKB<EOR>\n";
+    assert_eq!(serde_adif::to_string(&adif).unwrap(), expected);
 }

@@ -18,6 +18,9 @@ pub enum Error {
     /// A tag's length section is present but isn't a valid unsigned
     /// integer. Carries the raw text that failed to parse.
     InvalidLength(String),
+    /// A record <EOR> or header <EOH> terminator is missing. Carries the
+    /// missing terminator
+    MissingTerminator(String),
     Unsupported(&'static str),
 }
 
@@ -45,6 +48,9 @@ impl Display for Error {
                 write!(f, "the tag \"{}\" is missing its key or value length", tag)
             }
             Error::InvalidLength(len) => write!(f, "\"{}\" is not a valid value length", len),
+            Error::MissingTerminator(tag) => {
+                write!(f, "expected closing tag \"{}\" but it was never found", tag)
+            }
             Error::Unsupported(unsupported) => write!(f, "Unsupported type {}", unsupported),
         }
     }

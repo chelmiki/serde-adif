@@ -1,6 +1,9 @@
 //! Serialize a Rust data structure into ADIF data
 
-use crate::error::{Error, Result};
+use crate::{
+    error::{Error, Result},
+    Adif, EOH, EOR,
+};
 use serde::ser::{self, Serialize};
 use std::fmt::Write;
 
@@ -14,7 +17,7 @@ macro_rules! unsupported_serialize {
     };
 }
 
-pub struct AdifSerializer {
+struct AdifSerializer {
     output: String,
 }
 
@@ -26,18 +29,33 @@ impl AdifSerializer {
     }
 }
 
-/// Serializes `value` into an ADIF document.
+/// Serializes an `Adif<H, R>` into an ADIF document.
 ///
-/// The top level of an ADIF document is always a sequence of records, so
-/// `value` must be a sequence type (e.g. `Vec<Qso>`), not a single record
-/// struct - serializing a bare struct directly returns an
-/// [`Unsupported`](crate::Error::Unsupported) error.
-pub fn to_string<T>(value: &T) -> Result<String>
+/// The top level of an ADIF document always has the same shape: an
+/// optional header followed by a sequence of records. `H` and `R` are
+/// typically structs representing the header and each record
+/// respectively. If `header` is always `None`, `()` works for `H`. It's
+/// never actually serialized, since `H`'s `Serialize` impl is only
+/// invoked when `header` is `Some(...)`.
+pub fn to_string<H, R>(value: &Adif<H, R>) -> Result<String>
 where
-    T: Serialize,
+    H: Serialize,
+    R: Serialize,
 {
     let mut serializer = AdifSerializer::new();
-    value.serialize(&mut serializer)?;
+
+    if let Some(header) = &value.header {
+        let mut header_serializer = RecordSerializer::new_header();
+        header.serialize(&mut header_serializer)?;
+
+        // An ADIF file must start with something different than '<'
+        // when there is a header
+        serializer.output += "# ADIF Header\n";
+
+        serializer.output += &header_serializer.finish();
+        serializer.output += "\n";
+    }
+    value.records.serialize(&mut serializer)?;
     Ok(serializer.output)
 }
 
@@ -121,7 +139,7 @@ impl ser::SerializeSeq for &mut AdifSerializer {
     where
         T: ?Sized + Serialize,
     {
-        let mut serializer = RecordSerializer::new();
+        let mut serializer = RecordSerializer::new_record();
         value.serialize(&mut serializer)?;
         self.output += &serializer.finish();
         self.output += "\n";
@@ -136,12 +154,21 @@ impl ser::SerializeSeq for &mut AdifSerializer {
 
 struct RecordSerializer {
     output: String,
+    terminator: &'static str,
 }
 
 impl RecordSerializer {
-    fn new() -> Self {
+    fn new_record() -> Self {
         RecordSerializer {
             output: String::new(),
+            terminator: EOR,
+        }
+    }
+
+    fn new_header() -> Self {
+        RecordSerializer {
+            output: String::new(),
+            terminator: EOH,
         }
     }
 
@@ -247,7 +274,7 @@ impl ser::SerializeStruct for &mut RecordSerializer {
     }
 
     fn end(self) -> Result<()> {
-        self.output += "<EOR>";
+        self.output += self.terminator;
         Ok(())
     }
 }

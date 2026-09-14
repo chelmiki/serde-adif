@@ -27,10 +27,16 @@ ADIF (Amateur Data Interchange Format) is an open standard used to exchange ham 
 
 `serde-adif` is a real `serde::Serialize`/`Deserialize` backend for ADIF, so it works directly with `#[derive(Serialize, Deserialize)]` on your own structs, the same way `serde_json` or `toml` do for their formats. It doesn't impose any particular shape for a QSO - you define whichever fields you care about, and `serde-adif` maps them to and from ADIF's `<FIELD:LENGTH:TYPE>` tags.
 
+`serde-adif` does syntax checking but does not check or interpret ADIF semantics. It knows about basic types: strings, numbers, booleans, chars and sequences but doesn't know or care about higher level constructs like GridSquare (whether it is a valid 2, 4 or a 6 characters grid square) or dates; these are simply parsed as text and left up to the application to do the conversion and validation of those types. Similarly, `serde-adif` does not check whether a record's field names are recognized ADIF fields, or custom field names declared via USERDEFn header fields or prefixed with APP_. An application using `serde-adif` to serialize a struct containing custom fields that are not APP_-prefixed is responsible for adding its corresponding USERDEFn to the ADIF header.
+
 ## Reading and writing ADIF files
 
 ```rust
 use serde_derive::{Deserialize, Serialize};
+use serde_adif::Adif;
+
+#[derive(Deserialize, Serialize)]
+struct Header {}
 
 #[derive(Deserialize, Serialize)]
 struct Qso {
@@ -43,11 +49,11 @@ struct Qso {
 
 // Reading
 let data = std::fs::read_to_string("log.adi").unwrap();
-let qsos: Vec<Qso> = serde_adif::from_str(&data).unwrap();
+let adif = serde_adif::from_str::<Header, Qso>(&data).unwrap();
 
 // Writing
-let adif = serde_adif::to_string(&qsos).unwrap();
-std::fs::write("log.adi", adif).unwrap();
+let adif_text = serde_adif::to_string(&adif).unwrap();
+std::fs::write("log.adi", adif_text).unwrap();
 ```
 
 ## Architecture
